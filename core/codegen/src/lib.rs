@@ -116,7 +116,9 @@ mod attribute;
 mod bang;
 mod http_codegen;
 mod syn_ext;
+mod ident;
 
+use crate::ident::Ident;
 use crate::http::Method;
 use proc_macro::TokenStream;
 use devise::proc_macro2;
