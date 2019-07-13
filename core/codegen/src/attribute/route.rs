@@ -7,7 +7,7 @@ use devise::{syn, Spanned, SpanWrapped, Result, FromMeta, ext::TypeExt};
 use indexmap::IndexSet;
 
 use crate::proc_macro_ext::{Diagnostics, StringLit};
-use crate::syn_ext::{syn_to_diag, IdentExt};
+use crate::syn_ext::syn_to_diag;
 use self::syn::{Attribute, parse::Parser};
 
 use crate::http_codegen::{Method, MediaType, RoutePath, DataSegment, Optional};
@@ -47,7 +47,7 @@ struct Route {
     /// The parsed inputs to the user's function. The first ident is the ident
     /// as the user wrote it, while the second ident is the identifier that
     /// should be used during code generation, the `rocket_ident`.
-    inputs: Vec<(syn::Ident, syn::Ident, syn::Type)>,
+    inputs: Vec<(crate::Ident, crate::Ident, syn::Type)>,
 }
 
 fn parse_route(attr: RouteAttribute, function: syn::ItemFn) -> Result<Route> {
@@ -90,7 +90,7 @@ fn parse_route(attr: RouteAttribute, function: syn::ItemFn) -> Result<Route> {
         let span = input.span();
         let (ident, ty) = match input {
             syn::FnArg::Typed(arg) => match *arg.pat {
-                syn::Pat::Ident(ref pat) => (&pat.ident, &arg.ty),
+                syn::Pat::Ident(ref pat) => (crate::Ident::from(pat.ident.clone()), &arg.ty),
                 syn::Pat::Wild(_) => {
                     diags.push(span.error("handler arguments cannot be ignored").help(help));
                     continue;
@@ -109,7 +109,7 @@ fn parse_route(attr: RouteAttribute, function: syn::ItemFn) -> Result<Route> {
 
         let rocket_ident = ident.prepend(ROCKET_PARAM_PREFIX);
         inputs.push((ident.clone(), rocket_ident, ty.with_stripped_lifetimes()));
-        fn_segments.insert(ident.into());
+        fn_segments.insert((&ident).into());
     }
 
     // Check that all of the declared parameters are function inputs.
@@ -126,7 +126,7 @@ fn parse_route(attr: RouteAttribute, function: syn::ItemFn) -> Result<Route> {
     diags.head_err_or(Route { attribute: attr, function, inputs, segments })
 }
 
-fn param_expr(seg: &Segment, ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+fn param_expr(seg: &Segment, ident: &crate::Ident, ty: &syn::Type) -> TokenStream2 {
     define_vars_and_mods!(req, data, error, log, request, _None, _Some, _Ok, _Err, Outcome);
     let i = seg.index.expect("dynamic parameters must be indexed");
     let span = ident.span().unstable().join(ty.span()).unwrap().into();
@@ -174,7 +174,7 @@ fn param_expr(seg: &Segment, ident: &syn::Ident, ty: &syn::Type) -> TokenStream2
     }
 }
 
-fn data_expr(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+fn data_expr(ident: &crate::Ident, ty: &syn::Type) -> TokenStream2 {
     define_vars_and_mods!(req, data, FromData, Outcome, Transform);
     let span = ident.span().unstable().join(ty.span()).unwrap().into();
     quote_spanned! { span =>
@@ -308,7 +308,7 @@ fn query_exprs(route: &Route) -> Option<TokenStream2> {
     })
 }
 
-fn request_guard_expr(ident: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
+fn request_guard_expr(ident: &crate::Ident, ty: &syn::Type) -> TokenStream2 {
     define_vars_and_mods!(req, data, request, Outcome);
     let span = ident.span().unstable().join(ty.span()).unwrap().into();
     quote_spanned! { span =>
@@ -336,7 +336,7 @@ fn generate_internal_uri_macro(route: &Route) -> TokenStream2 {
     line_column.line.hash(&mut hasher);
     line_column.column.hash(&mut hasher);
 
-    let mut generated_macro_name = route.function.sig.ident.prepend(URI_MACRO_PREFIX);
+    let mut generated_macro_name = crate::Ident::from(route.function.sig.ident.clone()).prepend(URI_MACRO_PREFIX);
     generated_macro_name.set_span(Span::call_site().into());
     let inner_generated_macro_name = generated_macro_name.append(&hasher.finish().to_string());
     let route_uri = route.attribute.path.origin.0.to_string();
@@ -405,7 +405,7 @@ fn codegen_route(route: Route) -> Result<TokenStream> {
     // Gather everything we need.
     define_vars_and_mods!(req, data, handler, Request, Data, StaticRouteInfo);
     let (vis, user_handler_fn) = (&route.function.vis, &route.function);
-    let user_handler_fn_name = &user_handler_fn.sig.ident;
+    let user_handler_fn_name = crate::Ident::from(user_handler_fn.sig.ident.clone());
     let generated_fn_name = user_handler_fn_name.prepend(ROUTE_FN_PREFIX);
     let generated_struct_name = user_handler_fn_name.prepend(ROUTE_STRUCT_PREFIX);
     let generated_internal_uri_macro = generate_internal_uri_macro(&route);
@@ -472,7 +472,7 @@ fn incomplete_route(
     let method_span = StringLit::new(format!("#[{}]", method), Span::call_site())
         .subspan(2..2 + method_str.len());
 
-    let method_ident = syn::Ident::new(&method_str, method_span.into());
+    let method_ident = crate::Ident::from(syn::Ident::new(&method_str, method_span.into()));
 
     let function: syn::ItemFn = syn::parse(input).map_err(syn_to_diag)
         .map_err(|d| d.help(format!("#[{}] can only be used on functions", method_str)))?;

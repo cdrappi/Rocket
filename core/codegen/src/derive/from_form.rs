@@ -40,7 +40,7 @@ fn validate_struct(gen: &DeriveGenerator, data: Struct<'_>) -> Result<()> {
 
     let mut names = ::std::collections::HashMap::new();
     for field in data.fields().iter() {
-        let id = field.ident.as_ref().expect("named field");
+        let id = crate::Ident::from(field.ident.as_ref().expect("named field").clone());
         let field = match Form::from_attrs("form", &field.attrs) {
             Some(result) => result?.field,
             None => FormField { span: Spanned::span(&id), name: id.to_string() }
@@ -85,7 +85,7 @@ pub fn derive_from_form(input: TokenStream) -> TokenStream {
             define_vars_and_mods!(_None, _Some, _Ok, _Err);
             let (constructors, matchers, builders) = fields.iter().map(|field| {
                 let (ident, span) = (&field.ident, field.span().into());
-                let default_name = ident.as_ref().expect("named").to_string();
+                let default_name = crate::Ident::from(ident.as_ref().expect("named").clone()).to_string();
                 let name = Form::from_attrs("form", &field.attrs)
                     .map(|result| result.map(|form| form.field.name))
                     .unwrap_or_else(|| Ok(default_name))?;

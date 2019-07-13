@@ -60,7 +60,7 @@ pub fn derive_uri_display_query(input: TokenStream) -> TokenStream {
         .try_map_field(|_, field| {
             let span = field.span().into();
             let accessor = field.accessor();
-            let tokens = if let Some(ref ident) = field.ident {
+            let tokens = if let Some(ref ident) = field.ident.as_ref().map(|i| crate::Ident::from(i.clone())) {
                 let name = Form::from_attrs("form", &field.attrs)
                     .map(|result| result.map(|form| form.field.name))
                     .unwrap_or_else(|| Ok(ident.to_string()))?;

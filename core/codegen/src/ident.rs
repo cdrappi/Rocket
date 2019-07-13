@@ -25,6 +25,10 @@ impl Ident {
         Ident::from(syn::Ident::new(&format!("{}{}", string, self.unraw()), self.span()))
     }
 
+    pub fn append(&self, string: &str) -> Ident {
+        Ident::from(syn::Ident::new(&format!("{}{}", self, string), self.span()))
+    }
+
     pub fn span(&self) -> Span {
         self.0.span()
     }

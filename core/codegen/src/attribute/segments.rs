@@ -1,6 +1,5 @@
 use std::hash::{Hash, Hasher};
 
-use devise::syn;
 use proc_macro::{Span, Diagnostic};
 
 use crate::http::uri::{UriPart, Path};
@@ -31,8 +30,8 @@ impl Segment {
     }
 }
 
-impl From<&syn::Ident> for Segment {
-    fn from(ident: &syn::Ident) -> Segment {
+impl From<&crate::Ident> for Segment {
+    fn from(ident: &crate::Ident) -> Segment {
         Segment {
             kind: Kind::Static,
             source: Source::Unknown,

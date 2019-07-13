@@ -3,7 +3,7 @@ use devise::{syn, Spanned, Result, FromMeta};
 use crate::proc_macro2::TokenStream as TokenStream2;
 
 use crate::http_codegen::Status;
-use crate::syn_ext::{syn_to_diag, IdentExt, ReturnTypeExt};
+use crate::syn_ext::{syn_to_diag, ReturnTypeExt};
 use self::syn::{Attribute, parse::Parser};
 use crate::{CATCH_FN_PREFIX, CATCH_STRUCT_PREFIX};
 
@@ -44,7 +44,7 @@ pub fn _catch(args: TokenStream, input: TokenStream) -> Result<TokenStream> {
 
     // Gather everything we'll need to generate the catcher.
     let user_catcher_fn = &catch.function;
-    let mut user_catcher_fn_name = catch.function.sig.ident.clone();
+    let mut user_catcher_fn_name = crate::Ident::from(catch.function.sig.ident.clone());
     let generated_struct_name = user_catcher_fn_name.prepend(CATCH_STRUCT_PREFIX);
     let generated_fn_name = user_catcher_fn_name.prepend(CATCH_FN_PREFIX);
     let (vis, status) = (&catch.function.vis, &catch.status);

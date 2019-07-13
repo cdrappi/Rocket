@@ -3,12 +3,13 @@ use proc_macro::TokenStream;
 use crate::proc_macro2::TokenStream as TokenStream2;
 
 use devise::{syn, Result};
-use devise::syn::{Expr, Ident, Type, spanned::Spanned};
+use devise::syn::{Expr, Type, spanned::Spanned};
 use crate::http::{uri::{Origin, Path, Query}, ext::IntoOwned};
 use crate::http::route::{RouteSegment, Kind, Source};
 
+use crate::Ident;
 use crate::http_codegen::Optional;
-use crate::syn_ext::{IdentExt, syn_to_diag};
+use crate::syn_ext::syn_to_diag;
 use crate::bang::{prefix_last_segment, uri_parsing::*};
 
 use crate::URI_MACRO_PREFIX;
