@@ -40,7 +40,7 @@ pub fn derive_from_form_value(input: TokenStream) -> TokenStream {
         .try_map_enum(null_enum_mapper)
         .try_map_variant(move |_, variant| {
             let variant_str = Form::from_attrs("form", &variant.attrs)
-                .unwrap_or_else(|| Ok(Form { value: crate::Ident::from(variant.ident.clone()).to_string() }))?
+                .unwrap_or_else(|| Ok(Form { value: crate::Ident::from(&variant.ident).to_string() }))?
                 .value;
 
             let builder = variant.builder(|_| unreachable!());

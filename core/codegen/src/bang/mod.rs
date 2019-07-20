@@ -12,7 +12,8 @@ mod test_guide;
 
 pub fn prefix_last_segment(path: &mut Path, prefix: &str) {
     let mut last_seg = path.segments.last_mut().expect("syn::Path has segments");
-    last_seg.value_mut().ident = crate::Ident::from(last_seg.ident.clone()).prepend(prefix).into();
+    let last_ident = crate::Ident::from(&last_seg.ident);
+    last_seg.ident = last_ident.prepend(prefix).into();
 }
 
 fn _prefixed_vec(

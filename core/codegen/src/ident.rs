@@ -7,7 +7,6 @@ use self::syn::ext::IdentExt as _;
 use crate::proc_macro2::{Ident as Ident2, Span};
 use quote::ToTokens;
 
-#[repr(transparent)]
 #[derive(Clone, Debug)]
 pub struct Ident(Ident2);
 
@@ -51,6 +50,24 @@ impl std::ops::DerefMut for Ident {
 impl From<Ident2> for Ident {
     fn from(ident: Ident2) -> Ident {
         Ident(ident)
+    }
+}
+
+impl From<&Ident2> for Ident {
+    fn from(ident: &Ident2) -> Ident {
+        ident.clone().into()
+    }
+}
+
+impl From<String> for Ident {
+    fn from(string: String) -> Ident {
+        string.as_str().into()
+    }
+}
+
+impl From<&str> for Ident {
+    fn from(string: &str) -> Ident {
+        Ident(Ident2::new(string, Span::call_site()))
     }
 }
 

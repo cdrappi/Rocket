@@ -90,7 +90,7 @@ fn parse_route(attr: RouteAttribute, function: syn::ItemFn) -> Result<Route> {
         let span = input.span();
         let (ident, ty) = match input {
             syn::FnArg::Typed(arg) => match *arg.pat {
-                syn::Pat::Ident(ref pat) => (crate::Ident::from(pat.ident.clone()), &arg.ty),
+                syn::Pat::Ident(ref pat) => (crate::Ident::from(&pat.ident), &arg.ty),
                 syn::Pat::Wild(_) => {
                     diags.push(span.error("handler arguments cannot be ignored").help(help));
                     continue;
@@ -336,7 +336,7 @@ fn generate_internal_uri_macro(route: &Route) -> TokenStream2 {
     line_column.line.hash(&mut hasher);
     line_column.column.hash(&mut hasher);
 
-    let mut generated_macro_name = crate::Ident::from(route.function.sig.ident.clone()).prepend(URI_MACRO_PREFIX);
+    let mut generated_macro_name = crate::Ident::from(&route.function.sig.ident).prepend(URI_MACRO_PREFIX);
     generated_macro_name.set_span(Span::call_site().into());
     let inner_generated_macro_name = generated_macro_name.append(&hasher.finish().to_string());
     let route_uri = route.attribute.path.origin.0.to_string();
@@ -405,7 +405,7 @@ fn codegen_route(route: Route) -> Result<TokenStream> {
     // Gather everything we need.
     define_vars_and_mods!(req, data, handler, Request, Data, StaticRouteInfo);
     let (vis, user_handler_fn) = (&route.function.vis, &route.function);
-    let user_handler_fn_name = crate::Ident::from(user_handler_fn.sig.ident.clone());
+    let user_handler_fn_name = crate::Ident::from(&user_handler_fn.sig.ident);
     let generated_fn_name = user_handler_fn_name.prepend(ROUTE_FN_PREFIX);
     let generated_struct_name = user_handler_fn_name.prepend(ROUTE_STRUCT_PREFIX);
     let generated_internal_uri_macro = generate_internal_uri_macro(&route);
