@@ -8,7 +8,7 @@ use crate::proc_macro2::{Ident as Ident2, Span};
 use quote::ToTokens;
 
 #[repr(transparent)]
-#[derive(Clone, Debug, Eq, Ord)]
+#[derive(Clone, Debug)]
 pub struct Ident(Ident2);
 
 impl Ident {
@@ -68,15 +68,23 @@ impl PartialEq for Ident {
     }
 }
 
+impl Eq for Ident { }
+
 impl<T: ?Sized + AsRef<str>> PartialEq<T> for Ident {
     fn eq(&self, other: &T) -> bool {
         self.name() == other.as_ref()
     }
 }
 
+impl Ord for Ident {
+    fn cmp(&self, other: &Ident) -> Ordering {
+        self.name().cmp(&other.name())
+    }
+}
+
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Ident) -> Option<Ordering> {
-        self.name().partial_cmp(&other.name())
+        Some(self.cmp(other))
     }
 }
 
