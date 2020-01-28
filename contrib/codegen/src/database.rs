@@ -78,7 +78,7 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
 
     let generated_types = quote_spanned! { span =>
         /// The request guard type.
-        #vis struct #guard_type(pub #r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>);
+        #vis struct #guard_type(Option<#r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>>);
 
         /// The pool type.
         #vis struct #pool_type(#r2d2::Pool<<#conn_type as #Poolable>::Manager>);
@@ -117,27 +117,41 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
 
             /// Retrieves a connection of type `Self` from the `rocket`
             /// instance. Returns `Some` as long as `Self::fairing()` has been
-            /// attached and there is at least one connection in the pool.
+            /// attached.
             pub fn get_one(rocket: ::rocket::Inspector<'_>) -> Option<Self> {
                 rocket.state::<#pool_type>()
                     .and_then(|pool| pool.0.get().ok())
-                    .map(#guard_type)
+                    .map(|c| #guard_type(Some(c)))
+            }
+
+            pub async fn run<F, R>(&mut self, f: F) -> R
+            where
+                F: FnOnce(&mut #r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>) -> R + Send + 'static,
+                R: Send + 'static,
+            {
+                // run() takes &mut self, so the only way this take() can fail
+                // is if the future returned by run() was dropped, or if the
+                // expect below failed which would require something
+                // sufficiently unusual like a catch_unwind
+                let mut conn = self.0.take().expect("Attempted to call run() without awaiting the previous call to run() to completion.");
+                let (ret, conn) = #spawn_blocking(move || {
+                    let ret = f(&mut conn);
+                    (ret, conn)
+                }).await.expect("failed to spawn a blocking task to use a pooled connection");
+                self.0 = Some(conn);
+                ret
             }
         }
 
-        impl ::std::ops::Deref for #guard_type {
-            type Target = #conn_type;
-
-            #[inline(always)]
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-
-        impl ::std::ops::DerefMut for #guard_type {
-            #[inline(always)]
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
+        impl Drop for #guard_type {
+            fn drop(&mut self) {
+                // It is okay here if the connection is "missing" (None); it will
+                // be dropped eventually in whatever blocking task it was sent to
+                if let Some(conn) = self.0.take() {
+                    #spawn_blocking(move || {
+                        ::std::mem::drop(conn)
+                    });
+                }
             }
         }
 
@@ -147,19 +161,14 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
 
             async fn from_request(request: &'a #request::Request<'r>) -> #request::Outcome<Self, ()> {
                 use ::rocket::{Outcome, http::Status};
-
-                let guard = request.guard::<::rocket::State<'_, #pool_type>>();
-                let pool = ::rocket::try_outcome!(guard.await).0.clone();
-
+                let pool = ::rocket::try_outcome!(request.guard::<::rocket::State<'_, #pool_type>>().await).0.clone();
                 #spawn_blocking(move || {
                     match pool.get() {
-                        Ok(conn) => Outcome::Success(#guard_type(conn)),
+                        Ok(conn) => Outcome::Success(#guard_type(Some(conn))),
                         Err(_) => Outcome::Failure((Status::ServiceUnavailable, ())),
                     }
-                }).await.expect("failed to spawn a blocking task to get a pooled connection")
+                }).await.expect("failed to spawn a blocking task to acquire a pooled connection")
             }
         }
-
-        // TODO.async: What about spawn_blocking on drop?
     }.into())
 }
