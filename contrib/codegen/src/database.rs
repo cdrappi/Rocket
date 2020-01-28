@@ -78,7 +78,7 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
 
     let generated_types = quote_spanned! { span =>
         /// The request guard type.
-        #vis struct #guard_type(pub #r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>);
+        #vis struct #guard_type(#r2d2::Pool<<#conn_type as #Poolable>::Manager>);
 
         /// The pool type.
         #vis struct #pool_type(#r2d2::Pool<<#conn_type as #Poolable>::Manager>);
@@ -88,6 +88,8 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
         #generated_types
 
         impl #guard_type {
+            pub type Connection = #r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>;
+
             /// Returns a fairing that initializes the associated database
             /// connection pool.
             pub fn fairing() -> impl ::rocket::fairing::Fairing {
@@ -117,27 +119,25 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
 
             /// Retrieves a connection of type `Self` from the `rocket`
             /// instance. Returns `Some` as long as `Self::fairing()` has been
-            /// attached and there is at least one connection in the pool.
+            /// attached.
             pub fn get_one(rocket: &::rocket::Rocket) -> Option<Self> {
                 rocket.state::<#pool_type>()
                     .and_then(|pool| pool.0.get().ok())
                     .map(#guard_type)
             }
-        }
 
-        impl ::std::ops::Deref for #guard_type {
-            type Target = #conn_type;
-
-            #[inline(always)]
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-
-        impl ::std::ops::DerefMut for #guard_type {
-            #[inline(always)]
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
+            pub async fn run<F, R>(&self, f: F) -> Result<R, Error>
+            where
+                F: FnOnce(Self::Connection) -> R + Send + 'static,
+                R: Send + 'static,
+            {
+                let pool = self.clone();
+                #spawn_blocking(move || {
+                    match pool.get() {
+                        Ok(conn) => Ok(f(conn)),
+                        Err(e) => Err(e),
+                    }
+                }).await.expect("failed to spawn a blocking task to use a pooled connection")
             }
         }
 
@@ -145,20 +145,11 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
             type Error = ();
 
             fn from_request(request: &'a #request::Request<'r>) -> #request::FromRequestFuture<'a, Self, Self::Error> {
-                use ::rocket::{Outcome, http::Status};
                 Box::pin(async move {
                     let pool = ::rocket::try_outcome!(request.guard::<::rocket::State<'_, #pool_type>>()).0.clone();
-
-                    #spawn_blocking(move || {
-                        match pool.get() {
-                            Ok(conn) => Outcome::Success(#guard_type(conn)),
-                            Err(_) => Outcome::Failure((Status::ServiceUnavailable, ())),
-                        }
-                    }).await.expect("failed to spawn a blocking task to get a pooled connection")
+                    ::rocket::Outcome::Success(#guard_type(pool))
                 })
             }
         }
-
-        // TODO.async: What about spawn_blocking on drop?
     }.into())
 }
