@@ -31,11 +31,11 @@ pub struct DbConn(SqliteConnection);
 struct Context<'a, 'b>{ msg: Option<(&'a str, &'b str)>, tasks: Vec<Task> }
 
 impl<'a, 'b> Context<'a, 'b> {
-    pub fn err(conn: &DbConn, msg: &'a str) -> Context<'static, 'a> {
+    pub fn err(conn: &SqliteConnection, msg: &'a str) -> Context<'static, 'a> {
         Context{msg: Some(("error", msg)), tasks: Task::all(conn)}
     }
 
-    pub fn raw(conn: &DbConn, msg: Option<(&'a str, &'b str)>) -> Context<'a, 'b> {
+    pub fn raw(conn: &SqliteConnection, msg: Option<(&'a str, &'b str)>) -> Context<'a, 'b> {
         Context{msg: msg, tasks: Task::all(conn)}
     }
 }

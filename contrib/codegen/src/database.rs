@@ -88,8 +88,6 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
         #generated_types
 
         impl #guard_type {
-            pub type Connection = #r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>;
-
             /// Returns a fairing that initializes the associated database
             /// connection pool.
             pub fn fairing() -> impl ::rocket::fairing::Fairing {
@@ -122,20 +120,20 @@ pub fn database_attr(attr: TokenStream, input: TokenStream) -> Result<TokenStrea
             /// attached.
             pub fn get_one(rocket: &::rocket::Rocket) -> Option<Self> {
                 rocket.state::<#pool_type>()
-                    .and_then(|pool| pool.0.get().ok())
+                    .and_then(|pool| pool.clone())
                     .map(#guard_type)
             }
 
-            pub async fn run<F, R>(&self, f: F) -> Result<R, Error>
+            pub async fn run<F, R>(&self, f: F) -> Result<R, ()>
             where
-                F: FnOnce(Self::Connection) -> R + Send + 'static,
+                F: FnOnce(#r2d2::PooledConnection<<#conn_type as #Poolable>::Manager>) -> R + Send + 'static,
                 R: Send + 'static,
             {
-                let pool = self.clone();
+                let pool = self.0.clone();
                 #spawn_blocking(move || {
                     match pool.get() {
                         Ok(conn) => Ok(f(conn)),
-                        Err(e) => Err(e),
+                        Err(e) => Err(()),
                     }
                 }).await.expect("failed to spawn a blocking task to use a pooled connection")
             }
