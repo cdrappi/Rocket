@@ -397,13 +397,13 @@ impl RocketInner {
     }
 
     #[inline]
-    fn _attach(mut self, fairing: Box<dyn Fairing>) -> Self {
+    async fn _attach(mut self, fairing: Box<dyn Fairing>) -> Self {
         // Attach (and run attach) fairings, which requires us to move `self`.
         let mut fairings = mem::replace(&mut self.fairings, Fairings::new());
 
         let mut rocket = Rocket { inner: Some(self), pending: vec![] };
-        rocket = fairings.attach(fairing, rocket);
-        rocket.finish();
+        rocket = fairings.attach(fairing, rocket).await;
+        rocket.finish().await;
 
         self = rocket.take_inner();
 
@@ -792,17 +792,19 @@ impl Rocket {
         self
     }
 
-    pub(crate) fn finish(&mut self) {
-        while !self.pending.is_empty() {
-            let op = self.pending.remove(0);
-            let inner = self.take_inner();
-            self.inner = Some(match op {
-                BuildOperation::Mount(base, routes) => inner._mount(base, routes),
-                BuildOperation::Register(catchers) => inner._register(catchers),
-                BuildOperation::Manage(callback) => inner._manage(callback),
-                BuildOperation::Attach(fairing) => inner._attach(fairing),
-            });
-        }
+    pub(crate) fn finish(&mut self) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            while !self.pending.is_empty() {
+                let op = self.pending.remove(0);
+                let inner = self.take_inner();
+                self.inner = Some(match op {
+                    BuildOperation::Mount(base, routes) => inner._mount(base, routes),
+                    BuildOperation::Register(catchers) => inner._register(catchers),
+                    BuildOperation::Manage(callback) => inner._manage(callback),
+                    BuildOperation::Attach(fairing) => inner._attach(fairing).await,
+                });
+            }
+        })
     }
 
     /// Returns a `Future` that drives the server, listening for and dispathcing
@@ -833,11 +835,11 @@ impl Rocket {
 
         use crate::error::Error::Launch;
 
-        self.finish();
+        self.finish().await;
 
         self.inner_mut().prelaunch_check().map_err(crate::error::Error::Launch)?;
 
-        let inspector = self.inspect();
+        let inspector = Inspector(self.inner_ref());
 
         let config = inspector.config();
 
@@ -938,13 +940,10 @@ impl Rocket {
     /// rocket::ignite().launch();
     /// # }
     /// ```
-    pub fn launch(mut self) -> Result<(), crate::error::Error> {
-        let workers = self.inspect().config().workers as usize;
-
+    pub fn launch(self) -> Result<(), crate::error::Error> {
         // Initialize the tokio runtime
         let mut runtime = tokio::runtime::Builder::new()
             .threaded_scheduler()
-            .core_threads(workers)
             .enable_all()
             .build()
             .expect("Cannot build runtime!");
@@ -964,8 +963,8 @@ impl Rocket {
         self.inner.as_mut().expect("TODO error message")
     }
 
-    pub fn inspect(&mut self) -> Inspector<'_> {
-        self.finish();
+    pub async fn inspect(&mut self) -> Inspector<'_> {
+        self.finish().await;
         Inspector(self.inner_ref())
     }
 }
@@ -981,8 +980,9 @@ impl<'r> Inspector<'r> {
     /// # #![feature(proc_macro_hygiene)]
     /// # use std::{thread, time::Duration};
     /// #
+    /// # rocket::async_test(async {
     /// let mut rocket = rocket::ignite();
-    /// let handle = rocket.inspect().get_shutdown_handle();
+    /// let handle = rocket.inspect().await.get_shutdown_handle();
     ///
     /// # if false {
     /// thread::spawn(move || {
@@ -994,6 +994,7 @@ impl<'r> Inspector<'r> {
     /// let shutdown_result = rocket.launch();
     /// assert!(shutdown_result.is_ok());
     /// # }
+    /// # });
     /// ```
     #[inline(always)]
     pub fn get_shutdown_handle(&self) -> ShutdownHandle {
@@ -1017,11 +1018,12 @@ impl<'r> Inspector<'r> {
     /// }
     ///
     /// fn main() {
+    /// # rocket::async_test(async move {
     ///     let mut rocket = rocket::ignite()
     ///         .mount("/", routes![hello])
     ///         .mount("/hi", routes![hello]);
     ///
-    ///     for route in rocket.inspect().routes() {
+    ///     for route in rocket.inspect().await.routes() {
     ///         match route.base() {
     ///             "/" => assert_eq!(route.uri.path(), "/hello"),
     ///             "/hi" => assert_eq!(route.uri.path(), "/hi/hello"),
@@ -1029,7 +1031,8 @@ impl<'r> Inspector<'r> {
     ///         }
     ///     }
     ///
-    ///     assert_eq!(rocket.inspect().routes().count(), 2);
+    ///     assert_eq!(rocket.inspect().await.routes().count(), 2);
+    /// # });
     /// }
     /// ```
     #[inline(always)]
@@ -1046,11 +1049,13 @@ impl<'r> Inspector<'r> {
     /// #[derive(PartialEq, Debug)]
     /// struct MyState(&'static str);
     ///
+    /// # rocket::async_test(async {
     /// let mut rocket = rocket::ignite().manage(MyState("hello!"));
-    /// assert_eq!(rocket.inspect().state::<MyState>(), Some(&MyState("hello!")));
+    /// assert_eq!(rocket.inspect().await.state::<MyState>(), Some(&MyState("hello!")));
     ///
-    /// let client = rocket::local::Client::new(rocket).expect("valid rocket");
+    /// let client = rocket::local::Client::new(rocket).await.expect("valid rocket");
     /// assert_eq!(client.rocket().state::<MyState>(), Some(&MyState("hello!")));
+    /// # });
     /// ```
     #[inline(always)]
     pub fn state<T: Send + Sync + 'static>(&self) -> Option<&'r T> {

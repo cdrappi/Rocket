@@ -13,7 +13,7 @@ async fn get_count(client: &Client) -> usize {
 
 #[rocket::async_test]
 async fn test_count() {
-    let client = Client::new(super::rocket()).unwrap();
+    let client = Client::new(super::rocket()).await.unwrap();
 
     // Count should start at 0.
     assert_eq!(get_count(&client).await, 0);
@@ -25,13 +25,13 @@ async fn test_count() {
     assert_eq!(get_count(&client).await, 100);
 }
 
-#[test]
-fn test_raw_state_count() {
+#[rocket::async_test]
+async fn test_raw_state_count() {
     use rocket::State;
     use super::{count, index};
 
     let mut rocket = super::rocket();
-    let inspector = rocket.inspect();
+    let inspector = rocket.inspect().await;
 
     assert_eq!(count(State::from(inspector).unwrap()), "0");
     assert!(index(State::from(inspector).unwrap()).0.contains("Visits: 1"));
